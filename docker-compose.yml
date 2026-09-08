@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: tax_doc_db
+    restart: always
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  web:
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    container_name: tax_doc_api
+    command: python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: always
+    ports:
+      - "8000:8000"
+      - "5678:5678"
+    environment:
+      - PYTHONPATH=/app      
+    volumes:
+      - "./backend:/app"
+      - "./.creds/service-account-key.json:/app/creds/service-account-key.json:ro"
+    env_file:
+      - .env
+    depends_on:
+      - db
+
+  ui:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    container_name: tax_doc_ui
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - web    
+    
+volumes:
+  postgres_data:

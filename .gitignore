@@ -1,0 +1,33 @@
+# Secrets & Configs
+.env
+*.json
+!credentials_template.json
+
+# Credentials / Keys
+service-account-key.json
+*.pem
+*.key
+.creds/
+
+# Python / Virtual Environment
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+*.so
+
+# Database & Local Storage
+*.db
+*.sqlite3
+pgdata/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+
+# Logs & Temp
+*.log
+tmp/
