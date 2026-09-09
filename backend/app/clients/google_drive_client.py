@@ -1,90 +1,142 @@
-import os
-import io
-from typing import Dict, Any 
-from uuid import UUID
+import httpx
+from typing import Dict, Any, Optional
 
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
+class GoogleDriveClient():
+    def __init__(self, root_folder: str, client_id: str, client_secret: str, refresh_token: str, base_url: str = "https://www.googleapis.com", upload_url: str = "https://www.googleapis.com/upload/drive/v3") -> None:
+        self.root_folder = root_folder
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.refresh_token = refresh_token
+        self.base_url = base_url
+        self.upload_url = upload_url
 
-# ---------- Google Drive Client ----------
-# 
-class GoogleDriveClient:
+        self._access_token: Optional[str] = None
+        self._token_url = "https://oauth2.googleapis.com/token"
+        self.http_methods = {
+            'GET', 'POST', 'PUT', 'DELETE', 'PATCH'
+        }
+        
 
-    def __init__(self) -> None:
-        self.creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        self.root_folder = os.getenv("GOOGLE_DRIVE_PARENT_FOLDER_ID")
+    async def _get_access_token(self) -> Optional[str]:
+        payload = {
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "refresh_token": self.refresh_token,
+            "grant_type": "refresh_token",
+        }
 
-        if not self.creds_path or not os.path.exists(self.creds_path):
-            raise FileNotFoundError("Service account key not found")
+        async with httpx.AsyncClient() as client:
+            res = await client.post(self._token_url, data=payload)
+            res.raise_for_status()
+            data = res.json()
+            self._access_token = data["access_token"]
+            return self._access_token
 
-        self.scopes = ["https://www.googleapis.com/auth/drive.file"]
-        credentials = service_account.Credentials.from_service_account_file(
-            self.creds_path, scopes=self.scopes
-        )
-        self.google_service = build("drive", "v3", credentials=credentials)
+    async def _send_http_request(
+        self, method: str, url: str, **kwargs
+    ) -> httpx.Response:
+        if not self._access_token:
+            await self._get_access_token()
+
+        headers = kwargs.pop("headers", {})
+        headers["Authorization"] = f"Bearer {self._access_token}"
+
+        async with httpx.AsyncClient() as client:
+            res = await client.request(method, url, headers=headers, **kwargs)
+
+            # If token expired, refresh and retry once
+            if res.status_code == 401:
+                await self._get_access_token()
+                headers["Authorization"] = f"Bearer {self._access_token}"
+                res = await client.request(
+                    method, url, headers=headers, **kwargs
+                )
+
+            res.raise_for_status()
+            return res
+
+    async def get_file_metadata(self, file_id:str) -> Dict[str, Any]:    
+        url=f"{self.base_url}/drive/v3/files/{file_id}"
+        params={"fields": "id, name, mimeType, size, createdTime, md5Checksum"}
+        response = await self._send_http_request('GET', url, params=params)
+        return response.json()
+
+    #
+    async def get_file_content(self, file_id:str) -> bytes:
+        url=f"{self.base_url}/drive/v3/files/{file_id}"
+        params={"alt":"media"}
+        response = await self._send_http_request("GET", url, params=params)
+        return response.content
 
 
-    def get_or_create_client_folder(self, client_id: UUID, client_name: str):
-        folder_name = f"{client_name}_{client_id}"
+    async def get_or_create_folder(self, folder_name:str) -> str:
+        url = f"{self.base_url}/drive/v3/files"
+
         query = (
             f"name = '{folder_name}' and "
+            f"mimeType = 'application/vnd.google-apps.folder' and "
             f"'{self.root_folder}' in parents and "
-            "mimeType = 'application/vnd.google-apps.folder' and "
-            "trashed = false"
+            f"trashed = false"
         )
+        params={"q": query, "fields": "files(id)"}
 
-        response = self.google_service.files().list(q=query, fields="files(id, name)").execute()
-        files = response.get("files", [])
+        response = await self._send_http_request("GET", url, params=params)
+        files = response.json().get("files", [])
 
         if files:
             return files[0]["id"]
 
-        # Create subfolder inside parent folder
-        folder_metadata = {
+        payload = {
             "name": folder_name,
             "mimeType": "application/vnd.google-apps.folder",
             "parents": [self.root_folder]
         }
-        folder = self.google_service.files().create(body=folder_metadata, fields="id").execute()
-        return folder.get("id")
 
-    def get_document_bytes(self, file_id) -> bytes:
-        request = self.google_service.files().get().get_media(fileId=file_id)
-        file_stream = io.BytesIO()
-        downloader = MediaIoBaseDownload(file_stream, request)
+        response = await self._send_http_request("POST", url, json=payload)
+        return response.json()["id"]
 
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-
-        return file_stream.getvalue()
-
-    def upload_file_bytes(self, file_bytes: bytes, filename: str, content_type: str, folder_id: str) -> Dict[str, Any]:
-        file_metadata = {
-            "name": filename,
-            "parents": [folder_id]
-        }
+    async def upload_file(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        folder_id: str,
+        mime_type: str = "application/pdf",
+    ) -> Dict[str, Any]:
+        # Step 1: Initiate resumable session with explicit parent folder ID
+        init_url = f"{self.upload_url}/drive/v3/files?uploadType=resumable"
         
-        media = MediaIoBaseUpload(
-            io.BytesIO(file_bytes),
-            mimetype=content_type,
-            resumable=False
-        )
-
-        uploaded_file = self.google_service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields="id, name, webViewLink, webContentLink",
-            supportsAllDrives=True
-        ).execute()
-
-        return {
-            "drive_file_id": uploaded_file.get("id"),
-            "file_name": uploaded_file.get("name"),
-            "web_view_link": uploaded_file.get("webViewLink"),
-            "web_content_link": uploaded_file.get("webContentLink")
+        metadata_payload = {
+            "name": filename,
+            "parents": [folder_id],  # Ensures file is created directly inside target folder
+            "mimeType": mime_type,
         }
 
-    def delete_file(self, file_id: str) -> None:
-        self.google_service.files().delete(fileId=file_id).execute()
+        init_res = await self._send_http_request(
+            "POST",
+            init_url,
+            json=metadata_payload,
+            headers={"Content-Type": "application/json; charset=UTF-8"},
+        )
+        
+        # Extract session URI
+        session_url = init_res.headers["Location"]
+
+        # Step 2: Upload raw binary content
+        upload_res = await self._send_http_request(
+            "PUT",
+            session_url,
+            content=file_bytes,
+            headers={"Content-Type": mime_type},
+        )
+        
+        return upload_res.json()
+
+    async def delete_file(self, file_id: str, soft: bool = False) -> None:
+        url = f"{self.base_url}/drive/v3/files/{file_id}"
+
+        if soft:
+            # Soft delete: move to trash
+            await self._send_http_request("PATCH", url, json={"trashed": True})
+        else:
+            # Hard delete: purge completely
+            await self._send_http_request("DELETE", url)

@@ -1,3 +1,4 @@
+import os
 from fastapi import Depends
 from typing import AsyncGenerator
 
@@ -12,7 +13,7 @@ from app.repositories.requirement_repository import RequirementRepository
 from app.repositories.document_repository import DocumentRepository
 
 from app.clients.google_drive_client import GoogleDriveClient
-from app.clients.ocr_client import OCRClient
+from backend.app.clients.tesseract_ocr_client import TesseractOCRClient
 
 # ---------- Database Dependencies ----------
 # Yields a database session instance per request
@@ -23,10 +24,20 @@ async def get_db() -> AsyncGenerator:
 # ---------- Client Dependencies ----------
 # Clients to interact with external services
 async def get_google_drive_client() -> GoogleDriveClient:
-    return GoogleDriveClient() 
+    base_url = os.getenv("GOOGLE_DRIVE_URL", "https://www.googleapis.com")
+    upload_url = os.getenv("GOOGLE_DRIVE_UPLOAD_URL", "https://www.googleapis.com/upload")
+    root_folder = os.getenv("GOOGLE_DRIVE_PARENT_FOLDER_ID")
+    client_id = os.getenv("GOOGLE_DRIVE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_DRIVE_CLIENT_SECRET")
+    refresh_token = os.getenv("GOOGLE_DRIVE_REFRESH_TOKEN")
 
-async def get_ocr_client() -> OCRClient:
-    return OCRClient()
+    if not root_folder or not client_id or not client_secret or not refresh_token:
+        raise RuntimeError("Missing required Google Drive environment variables")
+
+    return GoogleDriveClient(root_folder=root_folder, client_id=client_id, client_secret=client_secret, refresh_token=refresh_token, base_url=base_url, upload_url=upload_url) 
+
+async def get_ocr_client() -> TesseractOCRClient:
+    return TesseractOCRClient()
 
 
 # ---------- Repository Dependencies ----------

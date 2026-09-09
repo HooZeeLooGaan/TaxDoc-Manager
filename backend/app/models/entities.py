@@ -35,7 +35,7 @@ class requirements(SQLModel, table=True):
 class ingested_documents(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True, index=True, nullable=False)
     client_id: UUID = Field(foreign_key="clients.id", index=True, nullable=False)
-    assigned_requirement_id: UUID = Field(foreign_key= "requirements.id", index=True, nullable=False)
+    assigned_requirement_id: Optional[UUID] = Field(foreign_key= "requirements.id", index=True, nullable=False)
 
     file_id: str = Field(unique=True, index=True, nullable=False)
     file_name: str = Field(max_length=255, nullable=False)

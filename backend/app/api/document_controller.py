@@ -30,4 +30,4 @@ async def get_documents(client_id: UUID, service: DocumentService=Depends(get_do
 
 @client_document_router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload_document(client_id: UUID, file: UploadFile, service: DocumentService = Depends(get_document_service)):
-    await service.upload_client_document(client_id, file)
+    return await service.upload_client_document(client_id, file)
