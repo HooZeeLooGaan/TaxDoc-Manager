@@ -14,5 +14,5 @@ google-auth>=2.0.0
 google-auth-httplib2>=0.1.0
 
 pytesseract>=0.3.10
-pdf2image>=1.17.0
+PyMuPDF>=1.23.0
 Pillow>=10.2.0
