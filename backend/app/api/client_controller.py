@@ -7,18 +7,15 @@ from app.schemas.clients import ClientRequest, ClientResponse
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
 
-
 # Controller endpoint to get a list of all the clients with their details
 @router.get("", status_code=status.HTTP_200_OK, response_model=list[ClientResponse])
 async def get_clients(service: ClientService = Depends(get_client_service)) -> list[ClientResponse]:
     return await service.get_clients()
 
-
 # Controller endpoint to get all the details of a particular client
 @router.get("/{client_id}", status_code = status.HTTP_200_OK)
 async def get_client_requirements(client_id: UUID, service: ClientService = Depends(get_client_service)) -> ClientResponse:
     return await service.get_client_by_id(client_id)
-
 
 # Controller endpoint to create a new client
 @router.post("", status_code=status.HTTP_201_CREATED)

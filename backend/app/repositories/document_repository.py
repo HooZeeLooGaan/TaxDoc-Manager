@@ -21,9 +21,14 @@ class DocumentRepository:
         result = await self.db.exec(query)
         return list(result.all())
 
+    # Create a document record upon upload action
     async def create_document(self, document: TaxDocument) -> TaxDocument:
         self.db.add(document)
         await self.db.commit()
+        return document
+
+    async def update_document(self, document: TaxDocument) -> TaxDocument:
+        # update
         return document
 
     # Delete document record matching document ID

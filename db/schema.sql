@@ -1,77 +1,115 @@
--- 1. Create Custom ENUM Types
-CREATE TYPE requirement_source AS ENUM ('SYSTEM_DERIVED', 'MANUAL');
-CREATE TYPE requirement_status AS ENUM ('PENDING', 'FULFILLED', 'WAIVED');
-CREATE TYPE flag_reason AS ENUM ('LOW_CONFIDENCE', 'WRONG_YEAR', 'UNREADABLE', 'UNMATCHED');
+from uuid import UUID, uuid4
+from typing import Optional, Dict, Any
+from datetime import datetime
+from enum import Enum
+from sqlmodel import Field, SQLModel
+from sqlalchemy import Column, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 
--- 2. Create Clients Table
-CREATE TABLE clients (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    primary_name VARCHAR(100) NOT NULL,
-    spouse_name VARCHAR(100),
-    tax_year INT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+# ---------- Enums ----------
+class RequirementStatus(str, Enum):
+    PENDING = "PENDING"
+    FULFILLED = "FULFILLED"
+    WAIVED = "WAIVED"
 
--- 3. Create Requirements Table
-CREATE TABLE requirements (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-    document_type VARCHAR(100) NOT NULL,
-    description TEXT,
-    is_mandatory BOOLEAN NOT NULL DEFAULT TRUE,
-    status requirement_status NOT NULL DEFAULT 'PENDING',
-    source requirement_source NOT NULL DEFAULT 'SYSTEM_DERIVED',
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-);
+class RequirementSource(str, Enum):
+    SYSTEM_DERIVED = "SYSTEM_DERIVED"
+    MANUAL = "MANUAL"
 
--- 4. Create Ingested Documents Table
-CREATE TABLE ingested_documents (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-    assigned_requirement_id UUID REFERENCES requirements(id) ON DELETE SET NULL,
+class DocumentStatus(str, Enum):
+    PENDING_CLASSIFICATION = "PENDING_CLASSIFICATION"
+    PROCESSING = "PROCESSING"
+    EXTRACTED = "EXTRACTED"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+class FlagReason(str, Enum):
+    LOW_CONFIDENCE = "LOW_CONFIDENCE"
+    YEAR_MISMATCH = "YEAR_MISMATCH"
+    OWNER_MISMATCH = "OWNER_MISMATCH"
+    UNREADABLE_FILE = "UNREADABLE_FILE"
+    MISSING_REQUIREMENT = "MISSING_REQUIREMENT"
+    MANUAL_FLAG = "MANUAL_FLAG"
+
+
+# ---------- Entity Classes ----------
+class clients(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True, index=True, nullable=False)
+    primary_name: str = Field(max_length=100, nullable=False)
+    spouse_name: Optional[str] = Field(default=None, max_length=100)
+    tax_year: int = Field(nullable=False, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+
+
+class requirements(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True, index=True, nullable=False)
+    client_id: UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True), 
+            ForeignKey("clients.id", ondelete="CASCADE"), 
+            nullable=False
+        )
+    )
+    document_type: str = Field(index=True, max_length=100, nullable=False)
+    description: Optional[str] = Field(default=None)
+    is_mandatory: bool = Field(default=True, nullable=False)
+    status: RequirementStatus = Field(default=RequirementStatus.PENDING, nullable=False)
+    source: RequirementSource = Field(default=RequirementSource.SYSTEM_DERIVED, nullable=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+
+
+class ingested_documents(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True, index=True, nullable=False)
     
-    -- Google Drive & File Identification
-    google_drive_file_id VARCHAR(255) NOT NULL UNIQUE,
-    file_name VARCHAR(255) NOT NULL,
-    file_path TEXT,
-    mime_type VARCHAR(100),
-    file_size_bytes BIGINT,
+    # Corrected: Explicit ForeignKey inside sa_column
+    client_id: UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("clients.id", ondelete="CASCADE"),
+            index=True,
+            nullable=False
+        )
+    )
     
-    -- AI Classification Results
-    -- ai_predicted_type VARCHAR(50),
-    -- ai_predicted_year INT,
-    -- ai_predicted_owner VARCHAR(100),
-    -- ai_confidence_score NUMERIC(3, 2), 
-    
-    -- -- Verification & Exception Handling
-    -- status document_status DEFAULT 'PENDING_CLASSIFICATION',
-    -- needs_attention BOOLEAN DEFAULT FALSE,
-    -- flag_reason flag_reason,
-    -- review_notes TEXT,
-    
-    -- Audit Timestamps & Tracking
-    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+    # Corrected: Explicit ForeignKey inside sa_column
+    assigned_requirement_id: Optional[UUID] = Field(
+        default=None,
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("requirements.id", ondelete="SET NULL"),
+            index=True,
+            nullable=True
+        )
+    )
 
--- -----------------------------------------------------------------------------
--- SEED DATA: Rivera Household (Tax Year 2025)
--- -----------------------------------------------------------------------------
+    # Google Drive & File Identification
+    google_drive_file_id: str = Field(max_length=255, unique=True, index=True, nullable=False)
+    file_name: str = Field(max_length=255, nullable=False)
+    file_path: Optional[str] = Field(default=None)
+    mime_type: Optional[str] = Field(default=None, max_length=100)
+    file_size_bytes: Optional[int] = Field(default=None)
 
--- Seed Client
--- INSERT INTO clients (id, primary_name, spouse_name, tax_year) 
--- VALUES ('c1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c', 'Ana Rivera', 'Luis Rivera', 2025);
+    # Raw & Processed OCR Extraction Content
+    ocr_raw_text: Optional[str] = Field(default=None)
+    ocr_processed_at: Optional[datetime] = Field(default=None)
 
--- -- Seed Baseline Requirements
--- -- Universal: Prior Year 1040 & Govt IDs
--- INSERT INTO requirements (client_id, document_type, owner_name, source, status) VALUES
--- ('c1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c', 'FORM_1040', 'Ana & Luis Rivera', 'SYSTEM', 'PENDING'),
--- ('c1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c', 'GOVT_ID', 'Ana Rivera', 'SYSTEM', 'PENDING'),
--- ('c1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c', 'GOVT_ID', 'Luis Rivera', 'SYSTEM', 'PENDING');
+    # AI Classification & Verification Insights
+    ai_predicted_type: Optional[str] = Field(default=None, max_length=50)
+    ai_predicted_year: Optional[int] = Field(default=None)
+    ai_predicted_owner: Optional[str] = Field(default=None, max_length=100)
+    ai_confidence_score: Optional[float] = Field(default=None)
+    ai_metadata: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSONB))
 
--- -- Baseline W-2s: Ana (2 jobs), Luis (1 initial job)
--- INSERT INTO requirements (client_id, document_type, owner_name, employer_name, source, status) VALUES
--- ('c1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c', 'W2', 'Ana Rivera', 'Company A (Job 1)', 'SYSTEM', 'PENDING'),
--- ('c1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c', 'W2', 'Ana Rivera', 'Company B (Job 2)', 'SYSTEM', 'PENDING'),
--- ('c1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c', 'W2', 'Luis Rivera', 'Company C (Job 1)', 'SYSTEM', 'PENDING');
+    # Verification & Exception Handling Workflow
+    status: DocumentStatus = Field(default=DocumentStatus.PENDING_CLASSIFICATION, index=True, nullable=False)
+    needs_attention: bool = Field(default=False, index=True, nullable=False)
+    flag_reason: Optional[FlagReason] = Field(default=None)
+    review_notes: Optional[str] = Field(default=None)
+    reviewed_by: Optional[str] = Field(default=None, max_length=255)
+    reviewed_at: Optional[datetime] = Field(default=None)
+
+    # Audit Timestamps & Tracking
+    uploaded_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)

@@ -37,6 +37,7 @@ class ClientService:
         client = await self.repository.create_client(client_entity)
         return ClientResponse.model_validate(client)
 
+    # Delete a client record
     async def delete_client(self, client_id: UUID) -> None:
         client = await self.repository.get_client_by_id(client_id)
         if not client:

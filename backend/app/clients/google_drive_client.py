@@ -14,45 +14,6 @@ class GoogleDriveClient():
 
         self._access_token: Optional[str] = None
         self._token_url = "https://oauth2.googleapis.com/token"
-        self.http_methods = {
-            'GET', 'POST', 'PUT', 'DELETE', 'PATCH'
-        }
-        
-    async def _get_access_token(self) -> Optional[str]:
-        payload = {
-            "client_id": self.client_id,
-            "client_secret": self.client_secret,
-            "refresh_token": self.refresh_token,
-            "grant_type": "refresh_token",
-        }
-
-        async with httpx.AsyncClient() as client:
-            res = await client.post(self._token_url, data=payload)
-            res.raise_for_status()
-            data = res.json()
-            self._access_token = data["access_token"]
-            return self._access_token
-
-    async def _send_http_request(self, method: str, url: str, **kwargs) -> httpx.Response:
-        if not self._access_token:
-            await self._get_access_token()
-
-        headers = kwargs.pop("headers", {})
-        headers["Authorization"] = f"Bearer {self._access_token}"
-
-        async with httpx.AsyncClient() as client:
-            res = await client.request(method, url, headers=headers, **kwargs)
-
-            # If token expired, refresh and retry once
-            if res.status_code == 401:
-                await self._get_access_token()
-                headers["Authorization"] = f"Bearer {self._access_token}"
-                res = await client.request(
-                    method, url, headers=headers, **kwargs
-                )
-
-            res.raise_for_status()
-            return res
 
     # Get file's metadata
     async def get_file_metadata(self, file_id:str) -> Dict[str, Any]:    
@@ -136,3 +97,43 @@ class GoogleDriveClient():
         else:
             # Hard delete: purge completely
             await self._send_http_request("DELETE", url)
+
+
+    # Private methods
+    # Get google drive access token when expired using its refresh token and client credentials
+    async def _get_access_token(self) -> Optional[str]:
+        payload = {
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "refresh_token": self.refresh_token,
+            "grant_type": "refresh_token",
+        }
+
+        async with httpx.AsyncClient() as client:
+            res = await client.post(self._token_url, data=payload)
+            res.raise_for_status()
+            data = res.json()
+            self._access_token = data["access_token"]
+            return self._access_token
+
+    # HTTP helper method to frame http requests and make http calls
+    async def _send_http_request(self, method: str, url: str, **kwargs) -> httpx.Response:
+        if not self._access_token:
+            await self._get_access_token()
+
+        headers = kwargs.pop("headers", {})
+        headers["Authorization"] = f"Bearer {self._access_token}"
+
+        async with httpx.AsyncClient() as client:
+            res = await client.request(method, url, headers=headers, **kwargs)
+
+            # If token expired, refresh and retry once
+            if res.status_code == 401:
+                await self._get_access_token()
+                headers["Authorization"] = f"Bearer {self._access_token}"
+                res = await client.request(
+                    method, url, headers=headers, **kwargs
+                )
+
+            res.raise_for_status()
+            return res

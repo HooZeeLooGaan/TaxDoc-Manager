@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 from app.repositories.client_repository import ClientRepository
 from app.repositories.requirement_repository import RequirementRepository
 from app.schemas.requirements import RequirementResponse, RequirementRequest, RequirementUpdateRequest
-from app.models.entities import requirements as Requirement, Requirement_Source, Requirement_Status, clients as Client
+from app.models.entities import requirements as Requirement, RequirementSource, RequirementStatus, clients as Client
 
 # ---------- Requirement Service ----------
 # Service file that holds the busiess logic of requirements
@@ -15,40 +15,40 @@ class RequirementService:
 
     # Service method to get all the requirements of a client
     async def get_client_requirements(self, client_id: UUID) -> list[RequirementResponse]:
-        await self.get_client(client_id)
+        await self._get_client(client_id)
         requirements = await self.requirement_repository.get_requirements_by_clientid(client_id)
         if not requirements: return []
         return [RequirementResponse.model_validate(requirement) for requirement in requirements]
 
     # Service method to create a requirement for a client
     async def create_client_requirements(self, client_id: UUID, requirement: RequirementRequest) -> RequirementResponse:
-        await self.get_client(client_id)
+        await self._get_client(client_id)
         requirementEntity = Requirement(
             client_id=client_id,
             document_type=requirement.document_type,
             description=requirement.description,
             is_mandatory=requirement.is_mandatory,
-            status=Requirement_Status.PENDING,
-            source=Requirement_Source.MANUAL_OVERRIDE
+            status=RequirementStatus.PENDING,
+            source=RequirementSource.MANUAL
         )
         response = await self.requirement_repository.create_requirement(requirementEntity)
         return RequirementResponse.model_validate(response)
 
     # Service method to update the values of a requirement entry
     async def update_requirements(self, requirement_id: UUID, requirementRequest: RequirementUpdateRequest) -> RequirementResponse:        
-        requirement = await self.get_requirement(requirement_id)
+        requirement = await self._get_requirement(requirement_id)
         requirement_update_request = requirementRequest.model_dump(exclude_unset=True)
         requirement = await self.requirement_repository.update_requirement(requirement, requirement_update_request)
         return RequirementResponse.model_validate(requirement)    
 
     # Service method to remove a requirement record
     async def delete_requirement(self, requirement_id: UUID) -> None:
-        requirement = await self.get_requirement(requirement_id)
+        requirement = await self._get_requirement(requirement_id)
         await self.requirement_repository.delete_requirement(requirement)
 
     # Re-evaluate client profile
     async def rederive_client_requirement(self, client_id: UUID) -> list[RequirementResponse]:
-        client = await self.get_client(client_id)
+        client = await self._get_client(client_id)
 
         existing_requirements = await self.requirement_repository.get_requirements_by_clientid(client_id) or []
         existing_doc_types = {requirement.document_type for requirement in existing_requirements}
@@ -77,8 +77,8 @@ class RequirementService:
                 document_type="GOVT_ID",
                 description="Government-issued Photo ID (Driver's License or Passport)",
                 is_mandatory=True,
-                status=Requirement_Status.PENDING,
-                source=Requirement_Source.SYSTEM_DERIVED,
+                status=RequirementStatus.PENDING,
+                source=RequirementSource.SYSTEM_DERIVED,
             )
         )
 
@@ -89,8 +89,8 @@ class RequirementService:
                 document_type="FORM_1040",
                 description=f"Prior Year Federal Tax Return ({client.tax_year - 1})",
                 is_mandatory=True,
-                status=Requirement_Status.PENDING,
-                source=Requirement_Source.SYSTEM_DERIVED,
+                status=RequirementStatus.PENDING,
+                source=RequirementSource.SYSTEM_DERIVED,
             )
         )
 
@@ -103,8 +103,8 @@ class RequirementService:
                     document_type="FORM_W2",
                     description=f"Form W-2 Wage and Tax Statement for {client.tax_year}",
                     is_mandatory=True,
-                    status=Requirement_Status.PENDING,
-                    source=Requirement_Source.SYSTEM_DERIVED,
+                    status=RequirementStatus.PENDING,
+                    source=RequirementSource.SYSTEM_DERIVED,
                 )
             )
 
@@ -115,21 +115,22 @@ class RequirementService:
                     document_type="SPOUSE_GOVT_ID",
                     description="Spouse's Government-issued Photo ID",
                     is_mandatory=True,
-                    status=Requirement_Status.PENDING,
-                    source=Requirement_Source.SYSTEM_DERIVED,
+                    status=RequirementStatus.PENDING,
+                    source=RequirementSource.SYSTEM_DERIVED,
                 )
             )
 
         # Bulk save newly derived requirements via repository
         return derived_requirements
 
-    async def get_client(self, client_id) -> Client:
+    # Private helper functions
+    async def _get_client(self, client_id) -> Client:
         client = await self.client_repository.get_client_by_id(client_id)
         if not client:
              raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Client with Id {client_id} does not exist")
         return client
 
-    async def get_requirement(self, requirement_id: UUID) -> Requirement:
+    async def _get_requirement(self, requirement_id: UUID) -> Requirement:
          requirement = await self.requirement_repository.get_requirement_by_id(requirement_id)
          if not requirement:
               raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)

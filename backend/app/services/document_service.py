@@ -5,7 +5,7 @@ from fastapi import UploadFile, HTTPException, status
 from app.clients.google_drive_client import GoogleDriveClient
 from app.clients.tesseract_ocr_client import TesseractOCRClient
 from app.repositories.document_repository import DocumentRepository
-from app.models.entities import ingested_documents as TaxDocument
+from app.models.entities import ingested_documents as TaxDocument, DocumentStatus
 from app.schemas.documents import DocumentResponse
 from app.services.client_service import ClientService
 from app.schemas.clients import ClientResponse
@@ -26,7 +26,7 @@ class DocumentService:
 
     # Get document metadata from the document store
     async def get_document_by_id(self, document_id: UUID) -> DocumentResponse:
-        document = await self.get_document_from_database(document_id)
+        document = await self._get_document_from_database(document_id)
         return DocumentResponse.from_db(document)
 
     # Get file content of document
@@ -37,13 +37,13 @@ class DocumentService:
 
     # Delete a document record from the database and remove corresponding file from the filestore
     async def delete_document(self, document_id: UUID) -> None:
-        document = await self.get_document_from_database(document_id)
+        document = await self._get_document_from_database(document_id)
         await self.google_drive_client.delete_file(document.file_id)
         await self.document_repository.delete_document(document)
 
     # Create a document record and upload the document content onto the clients' document store
     async def upload_client_document(self, client_id: UUID, file: UploadFile, requirement_id: Optional[UUID] = None) -> DocumentResponse:
-        client = await self.get_client(client_id)
+        client = await self._get_client(client_id)
         folder_name = f"{client.primary_name}_{client.id}"
         folder_id = await self.google_drive_client.get_or_create_folder(folder_name)
 
@@ -51,13 +51,18 @@ class DocumentService:
         filename = file.filename or "UntitledDoc"
         mime_type = file.content_type or "application/octet-stream"
         drive_file = await self.google_drive_client.upload_file(file_bytes=file_bytes, filename=filename, folder_id=folder_id, mime_type=mime_type)
+        file_path = f"GoogleDrive:/TaxDoc-Manager/{client_id}/{file.filename}"
 
         document = TaxDocument(
             client_id=client_id,
             assigned_requirement_id=requirement_id,
-            file_id=drive_file["id"],
+            google_drive_file_id=drive_file["id"],
             file_name=filename,
+            file_size_bytes=file.size,
+            file_path=file_path,
             mime_type=file.content_type,
+            status=DocumentStatus.PENDING_CLASSIFICATION,
+            needs_attention=False
             # web_view_link=drive_file.get("web_view_link")
         )
         documentRecord = await self.document_repository.create_document(document)
@@ -65,7 +70,7 @@ class DocumentService:
 
     # Private helper functions
     # Get the document record from the database and if not found raise an exception
-    async def get_document_from_database(self, document_id: UUID) -> TaxDocument:
+    async def _get_document_from_database(self, document_id: UUID) -> TaxDocument:
         document = await self.document_repository.get_docuement_by_id(document_id)
         if not document:
             raise HTTPException(
@@ -75,7 +80,7 @@ class DocumentService:
         return document
 
     # Get client details from client service
-    async def get_client(self, client_id: UUID) -> ClientResponse:
+    async def _get_client(self, client_id: UUID) -> ClientResponse:
         client = await self.client_service.get_client_by_id(client_id)
         if not client:
             raise HTTPException(

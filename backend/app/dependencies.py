@@ -1,12 +1,14 @@
 import os
 from fastapi import Depends
 from typing import AsyncGenerator
+from functools import lru_cache
 
 from app.core.database import AsyncSessionLocal
 
 from app.services.client_service import ClientService
 from app.services.requirement_service import RequirementService
 from app.services.document_service import DocumentService
+from app.services.insights_service import InsightsService
 
 from app.repositories.client_repository import ClientRepository
 from app.repositories.requirement_repository import RequirementRepository
@@ -23,7 +25,8 @@ async def get_db() -> AsyncGenerator:
 
 # ---------- Client Dependencies ----------
 # Clients to interact with external services
-async def get_google_drive_client() -> GoogleDriveClient:
+@lru_cache()
+def get_google_drive_client() -> GoogleDriveClient:
     base_url = os.getenv("GOOGLE_DRIVE_URL", "https://www.googleapis.com")
     upload_url = os.getenv("GOOGLE_DRIVE_UPLOAD_URL", "https://www.googleapis.com/upload")
     root_folder = os.getenv("GOOGLE_DRIVE_PARENT_FOLDER_ID")
@@ -36,9 +39,9 @@ async def get_google_drive_client() -> GoogleDriveClient:
 
     return GoogleDriveClient(root_folder=root_folder, client_id=client_id, client_secret=client_secret, refresh_token=refresh_token, base_url=base_url, upload_url=upload_url) 
 
-async def get_ocr_client() -> TesseractOCRClient:
-    return TesseractOCRClient()
-
+@lru_cache()
+def get_ocr_client() -> TesseractOCRClient:
+    return TesseractOCRClient("tesseract")
 
 # ---------- Repository Dependencies ----------
 # Provides the repository layer, automatically passing the active request-scoped database session straight into its constructor.
@@ -53,11 +56,14 @@ def get_document_repository(db = Depends(get_db)) -> DocumentRepository:
 
 # ---------- Service Dependencies ----------
 # Provides the business service layer, fully wired with its underlying repository layer dependencies.
-def get_client_service(respository = Depends(get_client_repository)) -> ClientService:
-    return ClientService(client_repository = respository)
+def get_client_service(repository = Depends(get_client_repository)) -> ClientService:
+    return ClientService(client_repository = repository)
 
 def get_requirement_service(repository = Depends(get_requirement_repository), client_repository = Depends(get_client_repository)) -> RequirementService:
     return RequirementService(requirement_repository = repository, client_repository=client_repository)
 
 def get_document_service(repository = Depends(get_document_repository), client_service = Depends(get_client_service), google_drive_client = Depends(get_google_drive_client), ocr_client = Depends(get_ocr_client)) -> DocumentService:
     return DocumentService(document_repository=repository, client_service=client_service, google_drive_client=google_drive_client, ocr_client=ocr_client)
+
+def get_insights_service(client = Depends(get_ocr_client), google_drive_client = Depends(get_google_drive_client), document_repository = Depends(get_document_repository)) -> InsightsService:
+    return InsightsService(ocr_client=client, google_drive_client=google_drive_client, document_repository=document_repository)
