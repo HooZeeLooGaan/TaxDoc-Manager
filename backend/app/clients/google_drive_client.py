@@ -1,6 +1,8 @@
 import httpx
 from typing import Dict, Any, Optional
 
+# ---------- Google Drive Client ----------
+# Client service that interfaces with Google drive APIs
 class GoogleDriveClient():
     def __init__(self, root_folder: str, client_id: str, client_secret: str, refresh_token: str, base_url: str = "https://www.googleapis.com", upload_url: str = "https://www.googleapis.com/upload/drive/v3") -> None:
         self.root_folder = root_folder
@@ -16,7 +18,6 @@ class GoogleDriveClient():
             'GET', 'POST', 'PUT', 'DELETE', 'PATCH'
         }
         
-
     async def _get_access_token(self) -> Optional[str]:
         payload = {
             "client_id": self.client_id,
@@ -32,9 +33,7 @@ class GoogleDriveClient():
             self._access_token = data["access_token"]
             return self._access_token
 
-    async def _send_http_request(
-        self, method: str, url: str, **kwargs
-    ) -> httpx.Response:
+    async def _send_http_request(self, method: str, url: str, **kwargs) -> httpx.Response:
         if not self._access_token:
             await self._get_access_token()
 
@@ -55,20 +54,21 @@ class GoogleDriveClient():
             res.raise_for_status()
             return res
 
+    # Get file's metadata
     async def get_file_metadata(self, file_id:str) -> Dict[str, Any]:    
         url=f"{self.base_url}/drive/v3/files/{file_id}"
         params={"fields": "id, name, mimeType, size, createdTime, md5Checksum"}
         response = await self._send_http_request('GET', url, params=params)
         return response.json()
 
-    #
+    # Read file bytes
     async def get_file_content(self, file_id:str) -> bytes:
         url=f"{self.base_url}/drive/v3/files/{file_id}"
         params={"alt":"media"}
         response = await self._send_http_request("GET", url, params=params)
         return response.content
 
-
+    # Get folder id using folder_name if it exists or create a new one
     async def get_or_create_folder(self, folder_name:str) -> str:
         url = f"{self.base_url}/drive/v3/files"
 
@@ -95,13 +95,8 @@ class GoogleDriveClient():
         response = await self._send_http_request("POST", url, json=payload)
         return response.json()["id"]
 
-    async def upload_file(
-        self,
-        file_bytes: bytes,
-        filename: str,
-        folder_id: str,
-        mime_type: str = "application/pdf",
-    ) -> Dict[str, Any]:
+    # Upload a file on to the client's drive
+    async def upload_file(self, file_bytes: bytes, filename: str, folder_id: str, mime_type: str = "application/pdf",) -> Dict[str, Any]:
         # Step 1: Initiate resumable session with explicit parent folder ID
         init_url = f"{self.upload_url}/drive/v3/files?uploadType=resumable"
         
@@ -131,6 +126,7 @@ class GoogleDriveClient():
         
         return upload_res.json()
 
+    # Delete a file from the drive
     async def delete_file(self, file_id: str, soft: bool = False) -> None:
         url = f"{self.base_url}/drive/v3/files/{file_id}"
 

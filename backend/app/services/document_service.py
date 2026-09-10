@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import UploadFile, HTTPException, status
 
 from app.clients.google_drive_client import GoogleDriveClient
-from backend.app.clients.tesseract_ocr_client import TesseractOCRClient
+from app.clients.tesseract_ocr_client import TesseractOCRClient
 from app.repositories.document_repository import DocumentRepository
 from app.models.entities import ingested_documents as TaxDocument
 from app.schemas.documents import DocumentResponse
@@ -20,7 +20,7 @@ class DocumentService:
         self.client_service = client_service
 
     # Service function to get all the documents of a client
-    async def get_client_documents(self, client_id: UUID):
+    async def get_client_documents(self, client_id: UUID) -> list[DocumentResponse]:
         response = await self.document_repository.get_documents_by_client_id(client_id)
         return [DocumentResponse.from_db(doc) for doc in response]
 
@@ -30,16 +30,18 @@ class DocumentService:
         return DocumentResponse.from_db(document)
 
     # Get file content of document
-    async def get_document_bytes(self, document_id: UUID):
+    async def get_document_bytes(self, document_id: UUID) -> bytes:
         document = await self.get_document_by_id(document_id)
-        file_bytes = self.google_drive_client.get_file_content(document.file_id)
+        file_bytes = await self.google_drive_client.get_file_content(document.file_id)
         return file_bytes
 
     # Delete a document record from the database and remove corresponding file from the filestore
     async def delete_document(self, document_id: UUID) -> None:
         document = await self.get_document_from_database(document_id)
         await self.google_drive_client.delete_file(document.file_id)
+        await self.document_repository.delete_document(document)
 
+    # Create a document record and upload the document content onto the clients' document store
     async def upload_client_document(self, client_id: UUID, file: UploadFile, requirement_id: Optional[UUID] = None) -> DocumentResponse:
         client = await self.get_client(client_id)
         folder_name = f"{client.primary_name}_{client.id}"
@@ -72,6 +74,7 @@ class DocumentService:
             )
         return document
 
+    # Get client details from client service
     async def get_client(self, client_id: UUID) -> ClientResponse:
         client = await self.client_service.get_client_by_id(client_id)
         if not client:

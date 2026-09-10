@@ -1,4 +1,4 @@
-from fastapi import APIRouter, status, Depends, UploadFile
+from fastapi import APIRouter, status, Depends, UploadFile, Response
 from uuid import UUID
 
 from app.services.document_service import DocumentService
@@ -14,7 +14,11 @@ async def get_document_by_id(document_id: UUID, service: DocumentService = Depen
 # fetch and download document content using document ID
 @document_router.get("/{document_id}/download", status_code=status.HTTP_200_OK)
 async def get_document_bytes(document_id: UUID, service: DocumentService = Depends(get_document_service)):
-    return await service.get_document_bytes(document_id)
+    file_bytes = await service.get_document_bytes(document_id)
+    return Response(
+        content=file_bytes,
+        media_type="application/pdf",
+    )
 
 # Delete document matching document ID
 @document_router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -24,10 +28,12 @@ async def delete_document(document_id: UUID, service: DocumentService = Depends(
 
 client_document_router = APIRouter(prefix="/clients/{client_id}/documents", tags=["Documents"])
 
+# Get all the clients' tax and related documents 
 @client_document_router.get("", status_code=status.HTTP_200_OK)
 async def get_documents(client_id: UUID, service: DocumentService=Depends(get_document_service)):
     return await service.get_client_documents(client_id)
 
+# Upload a document
 @client_document_router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload_document(client_id: UUID, file: UploadFile, service: DocumentService = Depends(get_document_service)):
     return await service.upload_client_document(client_id, file)

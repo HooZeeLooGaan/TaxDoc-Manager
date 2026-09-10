@@ -13,7 +13,7 @@ from app.repositories.requirement_repository import RequirementRepository
 from app.repositories.document_repository import DocumentRepository
 
 from app.clients.google_drive_client import GoogleDriveClient
-from backend.app.clients.tesseract_ocr_client import TesseractOCRClient
+from app.clients.tesseract_ocr_client import TesseractOCRClient
 
 # ---------- Database Dependencies ----------
 # Yields a database session instance per request

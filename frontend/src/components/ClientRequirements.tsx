@@ -1,221 +1,6 @@
-// import { useEffect, useState } from "react"
-// import { getClientById } from "../services/client"
-// import { type RequirementStatus, getClientRequirements } from "../services/requirement"
-
-// interface ClientRequirementProps{
-//     clientId: string,    
-//     onClose?: () => void
-// }
-
-// export default function ClientRequirements({clientId, onClose}: ClientRequirementProps){
-//     const [loading, setLoading] = useState<boolean>(true)
-//     const [error, setError] = useState<string | null>(null)
-//     const [clientInfo, setClientInfo] = useState<any>(null)
-//     const [clientRequirements, setClientRequirements] = useState<any[]>([])
-
-//     useEffect(()=>{
-//         let mounted = true
-
-//         const fetchClientData = async() =>{
-//             setLoading(true)
-//             setError(null)
-
-//             try{
-//                 const [clientResponse, requirementResponse] = await Promise.all([
-//                     getClientById(clientId),
-//                     getClientRequirements(clientId)
-//                 ])
-
-//                 if(mounted){
-//                     setClientInfo(clientResponse)
-//                     setClientRequirements(requirementResponse)
-//                     setLoading(false)
-//                 }
-//             }
-//             catch(err: any){
-//                 if (mounted) {
-//                     setLoading(false)
-//                     setError(err.message || "Failed to fetch clients")
-//                 }
-//             }
-//         }
-
-//         if(clientId){
-//             fetchClientData()
-//         }
-//         return () => {
-//             mounted = false
-//         }
-//     },[clientId])
-
-//     const handleStatusChange = async (reqId: string, newStatus: string) => {
-//         try {
-//             // const updated = await updateRequirement(reqId, { status: newStatus })
-//             // setRequirements((prev) =>
-//             //     prev.map((req) => (req.id === reqId ? updated : req))
-//             // )
-//             return
-//         } catch (err: any) {
-//             alert("Failed to update requirement status: " + (err.message || "Server error"))
-//         }
-//     }
-
-//     const getStatusStyle = (status: string) => {
-//         switch (status) {
-//             case "FULFILLED":
-//                 return "bg-emerald-50 text-emerald-700 border-emerald-200"
-//             case "WAIVED":
-//                 return "bg-slate-100 text-slate-600 border-slate-200"
-//             case "PENDING":
-//             default:
-//                 return "bg-amber-50 text-amber-700 border-amber-200"
-//         }
-//     }
-
-//     return (
-//         <aside className="w-full h-full min-h-screen flex flex-col bg-white border-l border-slate-200 shadow-lg font-sans">
-//             {/* ---------------- Sticky Header with Personal Details ---------------- */}
-//             <div className="p-6 border-b border-slate-200 bg-slate-50/80 backdrop-blur-sm sticky top-0 z-10 flex flex-col gap-4">
-//                 <div className="flex items-start justify-between">
-//                     <div>
-//                         <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-//                             Client Workspace
-//                         </span>
-//                         <h2 className="text-xl font-bold text-slate-800 tracking-tight mt-1">
-//                             {clientInfo?.name || "Tax Requirements"}
-//                         </h2>
-//                     </div>
-
-//                     {/* Close Button */}
-//                     {onClose && (
-//                         <button
-//                             onClick={onClose}
-//                             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors cursor-pointer"
-//                             aria-label="Close panel"
-//                         >
-//                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-//                             </svg>
-//                         </button>
-//                     )}
-//                 </div>
-
-//                 {/* Personal Details Information Box */}
-//                 <div className="grid grid-cols-3 gap-3 bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs text-xs">
-//                     <div>
-//                         <span className="text-slate-400 block font-medium text-[11px]">Primary Taxpayer</span>
-//                         <span className="font-semibold text-slate-700 mt-0.5 block truncate">
-//                             {clientInfo?.primary_name || "—"}
-//                         </span>
-//                     </div>
-
-//                     <div>
-//                         <span className="text-slate-400 block font-medium text-[11px]">Spouse Name</span>
-//                         <span className="font-semibold text-slate-700 mt-0.5 block truncate">
-//                             {clientInfo?.spouse_name || "N/A"}
-//                         </span>
-//                     </div>
-
-//                     <div>
-//                         <span className="text-slate-400 block font-medium text-[11px]">Tax Year</span>
-//                         <span className="font-bold text-indigo-700 mt-0.5 block">
-//                             {clientInfo?.tax_year ? `TY ${clientInfo.tax_year}` : "—"}
-//                         </span>
-//                     </div>
-//                 </div>
-//             </div>
-
-//             {/* ---------------- Scrollable Requirements Workspace ---------------- */}
-//             <div className="flex-1 overflow-y-auto p-6 bg-slate-50/30">
-//                 {/* Loading State */}
-//                 {loading && (
-//                     <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-//                         <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mb-3"></div>
-//                         <p className="text-xs font-medium">Fetching document requirements...</p>
-//                     </div>
-//                 )}
-
-//                 {/* Error State */}
-//                 {error && (
-//                     <div className="p-4 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-xs font-medium">
-//                         {error}
-//                     </div>
-//                 )}
-
-//                 {/* Empty State */}
-//                 {!loading && !error && clientRequirements.length === 0 && (
-//                     <div className="text-center py-16 bg-white rounded-xl border border-dashed border-slate-200 p-8">
-//                         <h3 className="text-sm font-semibold text-slate-700">No Document Requirements</h3>
-//                         <p className="text-xs text-slate-400 mt-1">
-//                             There are currently no tax document requirements flagged for this client.
-//                         </p>
-//                     </div>
-//                 )}
-
-//                 {/* Requirements List */}
-//                 {!loading && !error && clientRequirements.length > 0 && (
-//                     <div className="space-y-3">
-//                         <div className="flex items-center justify-between px-1 mb-1">
-//                             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-//                                 Required Documents ({clientRequirements.length})
-//                             </span>
-//                         </div>
-
-//                         {clientRequirements.map((req) => (
-//                             <div
-//                                 key={req.id}
-//                                 className="p-4 bg-white border border-slate-200 rounded-xl shadow-2xs hover:shadow-xs transition-all flex items-start justify-between gap-4"
-//                             >
-//                                 {/* Left Info Block */}
-//                                 <div className="space-y-1.5 flex-1">
-//                                     <div className="flex items-center gap-2">
-//                                         <span className="font-bold text-slate-800 text-sm">
-//                                             {req.document_type}
-//                                         </span>
-//                                         {req.is_mandatory && (
-//                                             <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
-//                                                 Required
-//                                             </span>
-//                                         )}
-//                                     </div>
-
-//                                     {req.description && (
-//                                         <p className="text-xs text-slate-500 leading-relaxed">
-//                                             {req.description}
-//                                         </p>
-//                                     )}
-
-//                                     <div className="flex items-center gap-2 pt-1">
-//                                         <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full uppercase tracking-tight">
-//                                             Source: {req.source}
-//                                         </span>
-//                                     </div>
-//                                 </div>
-
-//                                 {/* Right Status Switcher */}
-//                                 <div className="flex-shrink-0">
-//                                     <select
-//                                         value={req.status}
-//                                         onChange={(e) => handleStatusChange(req.id," e.target.value as RequirementStatus")}
-//                                         className={`text-xs font-bold px-3 py-1.5 rounded-lg border outline-none cursor-pointer transition-all ${getStatusStyle(
-//                                             req.status
-//                                         )}`}
-//                                     >
-//                                         <option value="PENDING">PENDING</option>
-//                                         <option value="FULFILLED">FULFILLED</option>
-//                                         <option value="WAIVED">WAIVED</option>
-//                                     </select>
-//                                 </div>
-//                             </div>
-//                         ))}
-//                     </div>
-//                 )}
-//             </div>
-//         </aside>
-//     )
-// }
-import React, { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ClientResponse } from "../services/client";
+import { getClientRequirements } from "../services/requirement";
 
 interface DocumentRequirement {
     id: string;
@@ -241,34 +26,37 @@ interface ClientRequirementsProps {
 }
 
 export default function ClientRequirements({ client, onClose }: ClientRequirementsProps) {
-    const [reviewQueue, setReviewQueue] = useState<PendingReviewFile[]>([
-        {
-            id: "f1",
-            fileName: "Scan_2026_03.pdf",
-            aiGuessType: "W-2",
-            confidence: 62,
-            taxpayer: "John",
-            taxYear: 2025,
-        },
-        {
-            id: "f2",
-            fileName: "IMG_0092.JPG",
-            aiGuessType: "1099-MISC",
-            confidence: 45,
-            taxpayer: "Jane",
-            taxYear: 2025,
-        },
-    ]);
+    const [loading, setLoading] = useState<boolean>(true);
+    const [error, setError] = useState<string|null>(null);
 
-    const [requirements, setRequirements] = useState<DocumentRequirement[]>([
-        { id: "1", documentType: "Form 1040 (Prior Year)", belongingTo: "Primary", source: "Derived", status: "OK", linkedFile: "1040_2024.pdf" },
-        { id: "2", documentType: "Government ID", belongingTo: "Primary", source: "Derived", status: "OK", linkedFile: "dl_john.png" },
-        { id: "3", documentType: "W-2 (Employer A)", belongingTo: "Primary", source: "Derived", status: "PEND" },
-        { id: "4", documentType: "W-2 (Employer B - New)", belongingTo: "Primary", source: "System Sync", status: "PEND" },
-        { id: "5", documentType: "W-2 (Employer C)", belongingTo: "Spouse", source: "Derived", status: "OK", linkedFile: "w2_jane.pdf" },
-    ]);
-
+    const [reviewQueue, setReviewQueue] = useState<PendingReviewFile[]>([]);
+    const [requirements, setRequirements] = useState<DocumentRequirement[]>([]);
     const [selectedDocTypes, setSelectedDocTypes] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        let mounted = true
+        setLoading(true)
+        setError(null)
+        async function fetchClientRequirements(){
+            try{
+                const response = await getClientRequirements(client.id)
+                if (mounted) {
+                    setRequirements(response)
+                    setLoading(false)
+                }
+            } catch(err: any){
+                if(mounted){
+                    setError(err.message)
+                    setLoading(false)
+                }
+            }
+        }
+
+        fetchClientRequirements()
+        return (() =>{
+            mounted = false
+        })
+    },[client.id])
 
     const handleConfirmAssign = (fileId: string) => {
         const file = reviewQueue.find((f) => f.id === fileId);
@@ -320,26 +108,53 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
     const progressPercent = totalReqs > 0 ? Math.round((fulfilledReqs / totalReqs) * 100) : 0;
 
     return (
-        <aside className="w-full h-full flex flex-col bg-white border-l border-slate-300 font-sans text-xs text-slate-800 overflow-hidden shadow-2xl">
+        <>
+        {loading && (
+        <div className="flex-1 flex items-center justify-center p-6 text-sm text-slate-400">
+            <span className="animate-pulse">Loading client details...</span>
+        </div>
+        )}
+
+        {error && (
+        <div className="m-4 p-4 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700">
+            <p className="font-semibold">Error loading client requirements</p>
+            <p className="mt-1">{error}</p>
+        </div>
+        )}
+
+        {!loading && !error &&
+        <aside className="w-full h-9/10 flex flex-col bg-white border-l border-slate-300 font-sans text-xs text-slate-800 overflow-hidden shadow-2xl">
             {/* CLIENT HEADER */}
             <header className="p-4 bg-slate-100 border-b border-slate-300 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 flex-wrap">
-                    <span className="font-bold text-slate-900 text-sm">
-                        CLIENT HEADER: {client.primary_name || "John & Jane Doe"}
-                    </span>
+                <div className="flex items-center gap-4 flex-wrap">
+                    {/* Client and Spouse names stacked on separate lines */}
+                    <div className="flex flex-col">
+                        <span className="font-bold text-slate-900 text-sm leading-tight">
+                        Client: {client.primary_name || "John Doe"}
+                        </span>
+                        {client.spouse_name && (
+                        <span className="font-medium text-slate-700 text-xs leading-tight">
+                            Spouse: {client.spouse_name}
+                        </span>
+                        )}
+                    </div>
+
+                    {/* Tax Year Badge */}
                     <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-semibold text-[11px] border border-slate-300">
                         TY {client.tax_year || "2025"}
                     </span>
+
+                    {/* Progress Bar Widget */}
                     <div className="flex items-center gap-2 bg-white px-2.5 py-1 rounded border border-slate-300">
                         <span className="font-semibold text-slate-600">Overall Intake Progress:</span>
                         <div className="w-24 bg-slate-200 h-2.5 rounded-full overflow-hidden border border-slate-300">
-                            <div className="bg-emerald-600 h-full" style={{ width: `${progressPercent}%` }} />
+                        <div className="bg-emerald-600 h-full" style={{ width: `${progressPercent}%` }} />
                         </div>
                         <span className="font-bold text-slate-800">
-                            [{progressPercent}%] ({fulfilledReqs}/{totalReqs})
+                        [{progressPercent}%] ({fulfilledReqs}/{totalReqs})
                         </span>
                     </div>
-                </div>
+                    </div>
 
                 {onClose && (
                     <button
@@ -447,6 +262,10 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
+                                {(!requirements || requirements.length === 0) && 
+                                <tr>
+                                    <td colSpan={5} className="py-4 text-center text-slate-500 font-medium">No requirement documents specified for the client</td>    
+                                </tr>}
                                 {requirements.map((req) => (
                                     <tr key={req.id} className="hover:bg-slate-50/80">
                                         <td className="p-2.5 border-r border-slate-200 font-bold">
@@ -525,5 +344,7 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
                 </section>
             </div>
         </aside>
+        }
+        </>
     );
 }

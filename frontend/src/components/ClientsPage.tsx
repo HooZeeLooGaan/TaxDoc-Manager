@@ -111,7 +111,7 @@ export default function ClientsPage(){
                     </section>
 
                     {/* Right 50% Panel - Blank Canvas with Heading */}
-                    <section className="w-1/2 h-full bg-slate-100 flex items-center justify-center select-none">
+                    <section className="w-1/2 h-full bg-indigo-100 flex items-center justify-center select-none">
                         
                         {/* 1. Default text container*/}
                         { activeView.type === "DEFAULT" &&(
