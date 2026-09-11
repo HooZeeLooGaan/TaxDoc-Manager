@@ -1,6 +1,6 @@
 import re
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import HTTPException, status
 from typing import Optional
 
@@ -25,7 +25,7 @@ class InsightsService():
         if not document:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The requested document record is not found")
         
-        document_bytes = await self.google_drive_client.get_file_content(document.file_id)
+        document_bytes = await self.google_drive_client.get_file_content(document.google_drive_file_id)
         if not document_bytes:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The requested document is not found at the document store")
 
@@ -78,13 +78,11 @@ class InsightsService():
     async def _update_document_record(self, document: TaxDocument, raw_text: str, document_analysis: AIScoreBreakdown) -> DocumentResponse:
         # model mapping based on AI score
         document.ocr_raw_text = raw_text
-        document.ocr_processed_at = datetime.utcnow()
+        document.ocr_processed_at = datetime.now()
 
-        document.ai_confidence_score = document_analysis.overall_confidence
+        document.ai_confidence_score = document_analysis.overall_confidence / 100 if document_analysis.overall_confidence > 1.0 else document_analysis.overall_confidence
         document.ai_predicted_type = document_analysis.detected_doc_type
 
-        document.ai_confidence_score = document_analysis.overall_confidence
-        document.status = DocumentStatus.NEEDS_REVIEW
         document.ai_metadata = {
             "detected_doc_type": document_analysis.detected_doc_type,
             "has_valid_tax_year": document_analysis.has_valid_tax_year,
@@ -95,11 +93,19 @@ class InsightsService():
             document.status = DocumentStatus.NEEDS_REVIEW
             document.needs_attention = True
             document.flag_reason = FlagReason.LOW_CONFIDENCE
+        elif not document_analysis.has_valid_tax_year:
+            document.status = DocumentStatus.NEEDS_REVIEW
+            document.needs_attention = True
+            document.flag_reason = FlagReason.YEAR_MISMATCH
+        elif document_analysis.detected_doc_type == "UNKNOWN":            
+            document.status = DocumentStatus.NEEDS_REVIEW
+            document.needs_attention = True
+            document.flag_reason = FlagReason.UNKNOWN_DOC_TYPE
         else:
             document.status = DocumentStatus.EXTRACTED
             document.needs_attention = False
 
-        document.updated_at = datetime.utcnow()
+        document.updated_at = datetime.now()
 
         document = await self.document_repository.update_document(document)    
         return DocumentResponse.from_db(document)

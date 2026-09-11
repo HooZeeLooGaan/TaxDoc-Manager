@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
 from sqlmodel import Field, SQLModel
-from sqlalchemy import Column, ForeignKey
+from sqlalchemy import Column, ForeignKey, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 
 # ---------- Enums ----------
@@ -31,6 +31,7 @@ class FlagReason(str, Enum):
     UNREADABLE_FILE = "UNREADABLE_FILE"
     MISSING_REQUIREMENT = "MISSING_REQUIREMENT"
     MANUAL_FLAG = "MANUAL_FLAG"
+    UNKNOWN_DOC_TYPE = "UNKNOWN_DOC_TYPE"
 
 
 # ---------- Entity Classes ----------
@@ -101,9 +102,31 @@ class ingested_documents(SQLModel, table=True):
     ai_metadata: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSONB))
 
     # Verification & Exception Handling Workflow
-    status: DocumentStatus = Field(default=DocumentStatus.PENDING_CLASSIFICATION, index=True, nullable=False)
+    status: DocumentStatus = Field(
+        default=DocumentStatus.PENDING_CLASSIFICATION,
+        sa_column=Column(
+            SQLEnum(
+                DocumentStatus,
+                name="document_status",  # Exact PostgreSQL type name
+                values_callable=lambda x: [e.value for e in x],
+                create_type=False
+            ),
+            nullable=False
+        )
+    )
     needs_attention: bool = Field(default=False, index=True, nullable=False)
-    flag_reason: Optional[FlagReason] = Field(default=None)
+    flag_reason: Optional[FlagReason] = Field(
+        default=None,
+        sa_column=Column(
+            SQLEnum(
+                FlagReason,
+                name="flag_reason",  # Exact PostgreSQL type name
+                values_callable=lambda x: [e.value for e in x],
+                create_type=False
+            ),
+            nullable=True
+        )
+    )
     review_notes: Optional[str] = Field(default=None)
     reviewed_by: Optional[str] = Field(default=None, max_length=255)
     reviewed_at: Optional[datetime] = Field(default=None)

@@ -8,7 +8,7 @@ def create_app() -> FastAPI:
     # Mount the app
     app = FastAPI(
         title = "Tax Document Collector API",
-        description="API service to track and manage tax documents submitted by clients",
+        description="API service to track and manage tax documents submitted by clients. Automates tax document ingestion, OCR text extraction, and AI classification.",
         version = "0.0.1"
     )
 

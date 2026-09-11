@@ -26,7 +26,7 @@ class DocumentResponse(DocumentBase):
             requirement_id = model.assigned_requirement_id,
 
             file_name = model.file_name,
-            file_id = model.file_id,
+            file_id = model.google_drive_file_id,
             file_size = model.file_size_bytes,
             mime_type = model.mime_type,
             file_path = model.file_path

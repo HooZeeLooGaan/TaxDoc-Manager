@@ -65,7 +65,6 @@ class RequirementService:
         requirements = await self.requirement_repository.get_requirements_by_clientid(client_id) or []
         return [RequirementResponse.model_validate(requirement) for requirement in requirements]
 
-
     # Private helper methods
     async def derive_base_requirements(self, client: Client):
         derived_requirements: list[Requirement] = []

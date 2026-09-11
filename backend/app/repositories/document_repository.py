@@ -28,7 +28,9 @@ class DocumentRepository:
         return document
 
     async def update_document(self, document: TaxDocument) -> TaxDocument:
-        # update
+        self.db.add(document)
+        await self.db.commit()
+        await self.db.refresh(document)
         return document
 
     # Delete document record matching document ID
