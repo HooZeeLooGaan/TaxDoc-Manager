@@ -55,8 +55,30 @@ class requirements(SQLModel, table=True):
     document_type: str = Field(index=True, max_length=100, nullable=False)
     description: Optional[str] = Field(default=None)
     is_mandatory: bool = Field(default=True, nullable=False)
-    status: RequirementStatus = Field(default=RequirementStatus.PENDING, nullable=False)
-    source: RequirementSource = Field(default=RequirementSource.SYSTEM_DERIVED, nullable=False)
+    status: RequirementStatus = Field(
+        default=RequirementStatus.PENDING,
+        sa_column=Column(
+            "status",
+            SQLEnum(
+                RequirementStatus,
+                name="requirement_status",
+                create_type=False
+            ),
+            nullable=False,
+        )
+    )
+    source: RequirementSource = Field(
+        default=RequirementSource.SYSTEM_DERIVED,
+        sa_column=Column(
+            "source",
+            SQLEnum(
+                RequirementSource,
+                name="requirement_source",
+                create_type=False
+            ),
+            nullable=False
+        )
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 

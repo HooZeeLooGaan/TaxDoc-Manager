@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import type { ClientResponse } from "../services/client";
 import { getClientRequirements } from "../services/requirement";
+import { uploadFile } from "../services/document";
 
 interface DocumentRequirement {
     id: string;
-    documentType: string;
+    document_type: string;
     belongingTo: "Primary" | "Spouse";
     source: "Derived" | "System Sync" | "Manual";
     status: "OK" | "PEND";
@@ -28,10 +29,17 @@ interface ClientRequirementsProps {
 export default function ClientRequirements({ client, onClose }: ClientRequirementsProps) {
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string|null>(null);
+    const [isUploading, setIsUploading] = useState<boolean>(false);
 
     const [reviewQueue, setReviewQueue] = useState<PendingReviewFile[]>([]);
     const [requirements, setRequirements] = useState<DocumentRequirement[]>([]);
     const [selectedDocTypes, setSelectedDocTypes] = useState<Record<string, string>>({});
+
+    // Track which specific requirement is currently requesting an upload (if triggered from the table)
+    const [activeReqForUpload, setActiveReqForUpload] = useState<string | null>(null);
+
+    // Hidden file input reference
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
 
     useEffect(() => {
         let mounted = true
@@ -46,7 +54,7 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
                 }
             } catch(err: any){
                 if(mounted){
-                    setError(err.message)
+                    setError(err.message || "Failed to fetch requirements")
                     setLoading(false)
                 }
             }
@@ -58,6 +66,76 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
         })
     },[client.id])
 
+    // Trigger file selection window
+    const triggerFileInput = (targetReqId?: string) => {
+        if (targetReqId) {
+            setActiveReqForUpload(targetReqId);
+        } else {
+            setActiveReqForUpload(null);
+        }
+        fileInputRef.current?.click();
+    };
+
+    const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = event.target.files
+        if(!files || files.length === 0) return
+        setIsUploading(true)
+
+        try{
+            for(let i = 0; i< files.length; i++){
+                const file = files[i]
+                await uploadFile({clientId: client.id, file: file, requirementId:""})
+
+                if(activeReqForUpload){
+                    setRequirements((prev) => 
+                        prev.map((req) => 
+                            req.id === activeReqForUpload
+                                ? { ...req, status: "OK", linkedFile: file.name, source: "Manual" }
+                                : req
+                        )
+                    )
+                } else {
+                    // Add generic fast-uploaded file into Review Queue for classification
+                    const newReviewItem: PendingReviewFile = {
+                        id: Date.now().toString() + i,
+                        fileName: file.name,
+                        aiGuessType: "Form 1040", // Fallback / mock AI prediction
+                        confidence: 85,
+                        taxpayer: "Primary",
+                        taxYear: Number(client.tax_year) || 2025,
+                    };
+                    setReviewQueue((prev) => [...prev, newReviewItem]);
+                }
+            }
+        } catch(err: any){
+            alert(`File upload failed: ${err?.message || "Unknown error"}`);
+        } finally {
+            setIsUploading(false);
+            setActiveReqForUpload(null);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = ""; // Reset input
+            }
+        }
+    }
+
+    // Handle Drag & Drop events
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            if (fileInputRef.current) {
+                fileInputRef.current.files = e.dataTransfer.files;
+                const event = { target: fileInputRef.current } as React.ChangeEvent<HTMLInputElement>;
+                handleFileChange(event);
+            }
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
     const handleConfirmAssign = (fileId: string) => {
         const file = reviewQueue.find((f) => f.id === fileId);
         if (!file) return;
@@ -68,7 +146,7 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
             ...prev,
             {
                 id: Date.now().toString(),
-                documentType: assignedType,
+                document_type: assignedType,
                 belongingTo: file.taxpayer === "Jane" ? "Spouse" : "Primary",
                 source: "Manual",
                 status: "OK",
@@ -91,7 +169,7 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
             ...prev,
             {
                 id: Date.now().toString(),
-                documentType: docName,
+                document_type: docName,
                 belongingTo: "Primary",
                 source: "Manual",
                 status: "PEND",
@@ -109,6 +187,15 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
 
     return (
         <>
+        {/* Hidden File Input for Native Pickers */}
+        <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+            multiple
+        />
+        
         {loading && (
         <div className="flex-1 flex items-center justify-center p-6 text-sm text-slate-400">
             <span className="animate-pulse">Loading client details...</span>
@@ -254,8 +341,8 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-[11px]">
-                                    <th className="p-2.5 border-r border-slate-200">Status</th>
                                     <th className="p-2.5 border-r border-slate-200">Document Type</th>
+                                    <th className="p-2.5 border-r border-slate-200">Status</th>
                                     <th className="p-2.5 border-r border-slate-200">Belonging To</th>
                                     <th className="p-2.5 border-r border-slate-200">Source</th>
                                     <th className="p-2.5">Actions</th>
@@ -268,6 +355,9 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
                                 </tr>}
                                 {requirements.map((req) => (
                                     <tr key={req.id} className="hover:bg-slate-50/80">
+                                        <td className="p-2.5 border-r border-slate-200 font-semibold text-slate-800">
+                                            {req.document_type}
+                                        </td>
                                         <td className="p-2.5 border-r border-slate-200 font-bold">
                                             {req.status === "OK" ? (
                                                 <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
@@ -278,9 +368,6 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
                                                     ⏳ PEND
                                                 </span>
                                             )}
-                                        </td>
-                                        <td className="p-2.5 border-r border-slate-200 font-semibold text-slate-800">
-                                            {req.documentType}
                                         </td>
                                         <td className="p-2.5 border-r border-slate-200 text-slate-600">
                                             {req.belongingTo}
@@ -309,7 +396,7 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
                                             ) : (
                                                 <div className="flex items-center gap-2">
                                                     <button
-                                                        onClick={() => alert(`Uploading file for ${req.documentType}`)}
+                                                        onClick={() => triggerFileInput(req.id)}
                                                         className="text-indigo-600 hover:underline font-medium"
                                                     >
                                                         [Upload File]
@@ -330,17 +417,33 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
                     </div>
                 </section>
 
-                {/* FAST UPLOAD */}
+              {/* FAST UPLOAD */}
                 <section className="bg-white border border-slate-300 rounded-md overflow-hidden shadow-xs">
-                    <div className="p-2.5 bg-slate-100 border-b border-slate-300 font-bold text-slate-800 uppercase tracking-wider">
-                        FAST UPLOAD
-                    </div>
-                    <div className="p-6 border-2 border-dashed border-slate-300 m-3 rounded text-center bg-slate-50 hover:bg-slate-100/80 transition-colors cursor-pointer">
-                        <span className="text-slate-600 font-medium">
-                            Drag & Drop client files here or{" "}
-                            <span className="text-indigo-600 font-bold underline">[Browse Files]</span>
-                        </span>
-                    </div>
+                <div className="p-2.5 bg-slate-100 border-b border-slate-300 font-bold text-slate-800 uppercase tracking-wider flex items-center justify-between">
+                    <span>FAST UPLOAD</span>
+                    {isUploading && (
+                    <span className="text-xs text-indigo-600 animate-pulse font-normal">
+                        Uploading...
+                    </span>
+                    )}
+                </div>
+                <div
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    onClick={() => triggerFileInput()}
+                    className="p-6 border-2 border-dashed border-slate-300 m-3 rounded text-center bg-slate-50 hover:bg-slate-100/80 transition-colors cursor-pointer"
+                >
+                    <span className="text-slate-600 font-medium">
+                    {isUploading ? (
+                        <span className="text-indigo-600 font-bold">Uploading files...</span>
+                    ) : (
+                        <>
+                        Drag & Drop client files here or{" "}
+                        <span className="text-indigo-600 font-bold underline">[Browse Files]</span>
+                        </>
+                    )}
+                    </span>
+                </div>
                 </section>
             </div>
         </aside>

@@ -1,5 +1,6 @@
 import { useState, type SubmitEvent } from "react"
 import { createClient, type ClientRequest, type ClientResponse } from "../services/client"
+import { rederiveClientRequirements } from "../services/requirement"
 
 interface createClientFormProps {
     onSuccess?: (newClient: ClientResponse) => void
@@ -25,16 +26,17 @@ export default function ClientForm({onSuccess, onCancel}: createClientFormProps)
         setLoading(true)
         setError(null)
         try{
-            const response = await createClient(formData)
-            setLoading(false)
-            if(onSuccess){
-                onSuccess(response)
-            }
+            const client = await createClient(formData)
+            await rederiveClientRequirements(client.id)
             setFormData({
                 primary_name: "",
                 spouse_name: "",
                 tax_year: ""
             })
+            setLoading(false)
+            if(onSuccess){
+                onSuccess(client)
+            }
         }
         catch(err: any){
             setLoading(false)
