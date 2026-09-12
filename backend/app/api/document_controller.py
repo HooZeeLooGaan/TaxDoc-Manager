@@ -57,7 +57,7 @@ client_document_router = APIRouter(prefix="/clients/{client_id}/documents", tags
 
 # Get all the clients' tax and related documents 
 @client_document_router.get("", status_code=status.HTTP_200_OK, response_model=list[DocumentResponse], summary="Retrieve all of client's document")
-async def get_documents(client_id: UUID, service: DocumentService=Depends(get_document_service)) -> list[DocumentResponse]:
+async def get_documents(client_id: UUID, getReviewDocsOnly: bool = False, service: DocumentService=Depends(get_document_service)) -> list[DocumentResponse]:
     """
         ### Fetch Ingested Document & Processing Status 📄
         Retrieves metadata, OCR extraction outputs, AI classification results, and verification status for a specific uploaded document.
@@ -68,7 +68,7 @@ async def get_documents(client_id: UUID, service: DocumentService=Depends(get_do
         * **Requirement Tracking**: See which requirement item this document is assigned to (`assigned_requirement_id`).
         * **Verification Flags**: Identifies documents flagged for human review (`NEEDS_REVIEW`) due to low confidence or year/owner mismatches.
     """
-    return await service.get_client_documents(client_id)
+    return await service.get_client_documents(client_id, getReviewDocsOnly)
 
 # Upload a document
 @client_document_router.post("/upload", status_code=status.HTTP_201_CREATED, response_model=DocumentResponse, summary="Upload & Ingest document")

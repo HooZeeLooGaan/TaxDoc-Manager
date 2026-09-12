@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from uuid import UUID
 from typing import Optional, Dict, Any
 
-from app.models.entities import ingested_documents as TaxDocument
+from app.models.entities import ingested_documents as TaxDocument, FlagReason, DocumentStatus
 
 class DocumentBase(BaseModel):
     file_name: str
@@ -11,7 +11,15 @@ class DocumentBase(BaseModel):
     file_size: Optional[int] = Field(default=None, description="Size in bytes")
     requirement_id: Optional[UUID] = None
 
-class DocumentResponse(DocumentBase):
+class DocumentInsights(BaseModel):
+    confidence_score: Optional[float]
+    predicted_type: Optional[str]
+    predicted_year: Optional[int]
+    predicted_owner: Optional[str]
+    flag_reason: Optional[FlagReason]
+    status: DocumentStatus
+
+class DocumentResponse(DocumentBase, DocumentInsights):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -29,18 +37,12 @@ class DocumentResponse(DocumentBase):
             file_id = model.google_drive_file_id,
             file_size = model.file_size_bytes,
             mime_type = model.mime_type,
-            file_path = model.file_path
-        )
+            file_path = model.file_path,
+            status = model.status,
 
-    @classmethod
-    def from_client(cls, client_response: Dict[str, Any], client_id: UUID, document_id: UUID) -> "DocumentResponse":
-        return cls(
-            id = document_id,
-            client_id = client_id,
-
-            file_id = client_response.get("id", ""),
-            file_name = client_response.get("name", "Untitled"),
-            file_size=int(client_response.get("size", 0)) if client_response.get("size") else None,
-            mime_type=client_response.get("mimeType"),
-            file_path = client_response.get("file_path")
+            confidence_score = round(model.ai_confidence_score * 100) if model.ai_confidence_score else None,
+            predicted_type = model.ai_predicted_type,
+            predicted_year = model.ai_predicted_year,
+            predicted_owner = model.ai_predicted_owner,
+            flag_reason = model.flag_reason
         )

@@ -3,7 +3,7 @@ from sqlmodel import select
 from uuid import UUID
 from typing import Optional
 
-from app.models.entities import ingested_documents as TaxDocument
+from app.models.entities import ingested_documents as TaxDocument, DocumentStatus
 
 # ---------- Document Repository ----------
 # Repository class to deal with database operations with the ingested Tax Documents entity
@@ -16,8 +16,10 @@ class DocumentRepository:
         return await self.db.get(TaxDocument, document_id)
 
     # Get all the document records for a client with client ID
-    async def get_documents_by_client_id(self, client_id: UUID) -> list[TaxDocument]:
+    async def get_documents_by_client_id(self, client_id: UUID, getReviewDocsOnly: bool) -> list[TaxDocument]:
         query = select(TaxDocument).where(TaxDocument.client_id == client_id)
+        if getReviewDocsOnly:
+            query.where(TaxDocument.status == DocumentStatus.PENDING_CLASSIFICATION)
         result = await self.db.exec(query)
         return list(result.all())
 

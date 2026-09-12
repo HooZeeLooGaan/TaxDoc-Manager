@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import type { ClientResponse } from "../services/client";
-import { getClientRequirements } from "../services/requirement";
-import { uploadFile } from "../services/document";
+import { getClientRequirements, rederiveClientRequirements } from "../services/requirement";
+import { getClientDocuments, uploadFile, type IngestedDocumentResponse } from "../services/document";
 
 interface DocumentRequirement {
     id: string;
@@ -30,9 +30,11 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string|null>(null);
     const [isUploading, setIsUploading] = useState<boolean>(false);
+    const [isRederiving, setIsRederiving] = useState<boolean>(false);
 
     const [reviewQueue, setReviewQueue] = useState<PendingReviewFile[]>([]);
     const [requirements, setRequirements] = useState<DocumentRequirement[]>([]);
+    const [documents, setDocuments] = useState<IngestedDocumentResponse[]>([])
     const [selectedDocTypes, setSelectedDocTypes] = useState<Record<string, string>>({});
 
     // Track which specific requirement is currently requesting an upload (if triggered from the table)
@@ -45,22 +47,30 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
         let mounted = true
         setLoading(true)
         setError(null)
-        async function fetchClientRequirements(){
+
+        async function fetchClientData(){
             try{
-                const response = await getClientRequirements(client.id)
-                if (mounted) {
-                    setRequirements(response)
-                    setLoading(false)
-                }
-            } catch(err: any){
+                const [requirementResponse, documentResponse] = await Promise.all([
+                    getClientRequirements(client.id),
+                    getClientDocuments(client.id)
+                ])
+
                 if(mounted){
-                    setError(err.message || "Failed to fetch requirements")
+                    setRequirements(requirementResponse)
+                    setDocuments(documentResponse)
+                }
+            } catch(err: any) {
+                if (mounted) {
+                    setError(err?.message || "Failed to fetch client details");
+                }
+            } finally{
+                if (mounted){
                     setLoading(false)
                 }
             }
         }
 
-        fetchClientRequirements()
+        fetchClientData()
         return (() =>{
             mounted = false
         })
@@ -134,6 +144,24 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.stopPropagation();
+    };
+
+    const handleRederiveRequirements = async () => {
+        if (!client?.id) return;
+        
+        setIsRederiving(true);
+        try {
+            // Call backend endpoint to rederive requirements for this client
+            const updatedRequirements = await rederiveClientRequirements(client.id);
+            
+            // Update local state with the refreshed requirements list
+            setRequirements(updatedRequirements);
+        } catch (err: any) {
+            console.error("Failed to rederive requirements:", err);
+            alert(`Error rederiving requirements: ${err?.message || "Something went wrong"}`);
+        } finally {
+            setIsRederiving(false);
+        }
     };
 
     const handleConfirmAssign = (fileId: string) => {
@@ -256,86 +284,124 @@ export default function ClientRequirements({ client, onClose }: ClientRequiremen
 
             <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50">
                 {/* ⚠️ ATTENTION REQUIRED */}
-                {reviewQueue.length > 0 && (
+                {documents.length > 0 && (
                     <section className="border border-amber-300 bg-amber-50/60 rounded-md p-3 space-y-3">
                         <div className="font-bold text-amber-900 text-xs flex items-center gap-1.5">
                             <span>⚠️ ATTENTION REQUIRED</span>
-                            <span>({reviewQueue.length} files pending manual review)</span>
+                            <span>({documents.length} files pending manual review)</span>
                         </div>
 
-                        {reviewQueue.map((file) => (
-                            <div key={file.id} className="bg-white border border-amber-300 rounded p-3 space-y-2 shadow-xs">
-                                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                                    <div className="flex items-center gap-2 font-mono text-slate-800">
-                                        <span className="text-slate-500">📄 [PDF Icon]</span>
-                                        <span className="font-bold">{file.fileName}</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-slate-600">
-                                        <span>
-                                            AI Guess: <strong className="text-slate-900">{file.aiGuessType}</strong> ({file.confidence}% Conf)
-                                        </span>
-                                        <span>|</span>
-                                        <span>Taxpayer: <strong className="text-slate-900">{file.taxpayer}</strong></span>
-                                        <span>|</span>
-                                        <span>Year: <strong className="text-slate-900">{file.taxYear}</strong></span>
-                                    </div>
-                                </div>
+                        {documents.map((file) => (
+                        <div 
+                            key={file.id} 
+                            className="bg-white border border-amber-200 hover:border-amber-300 rounded-md p-2.5 flex items-center justify-between gap-3 text-xs shadow-2xs transition-colors"
+                        >
+                            {/* Left: File Name with inline preview trigger */}
+                            <div className="flex items-center gap-2 min-w-0">
+                            <button
+                                onClick={() => alert(`Previewing ${file.file_name}`)}
+                                className="flex items-center gap-1.5 font-mono font-semibold text-slate-800 hover:text-indigo-600 truncate text-left group"
+                                title="Click to view thumbnail"
+                            >
+                                <span className="truncate underline-offset-2 group-hover:underline">{file.file_name}</span>
+                            </button>
 
-                                <div className="flex items-center justify-between gap-2 pt-1">
-                                    <button
-                                        onClick={() => alert(`Previewing ${file.fileName}`)}
-                                        className="text-indigo-600 hover:underline font-medium"
-                                    >
-                                        [View Thumbnail]
-                                    </button>
-
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-slate-500 font-medium">Options:</span>
-                                        <select
-                                            className="bg-white border border-slate-300 rounded px-2 py-1 text-xs"
-                                            value={selectedDocTypes[file.id] || file.aiGuessType}
-                                            onChange={(e) =>
-                                                setSelectedDocTypes({ ...selectedDocTypes, [file.id]: e.target.value })
-                                            }
-                                        >
-                                            <option value="W-2">W-2</option>
-                                            <option value="Form 1040">Form 1040</option>
-                                            <option value="1099-INT">1099-INT</option>
-                                            <option value="1099-MISC">1099-MISC</option>
-                                            <option value="Government ID">Government ID</option>
-                                        </select>
-
-                                        <button
-                                            onClick={() => handleConfirmAssign(file.id)}
-                                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-2.5 py-1 rounded"
-                                        >
-                                            Confirm & Assign
-                                        </button>
-
-                                        <button
-                                            onClick={() => handleReject(file.id)}
-                                            className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold px-2.5 py-1 rounded"
-                                        >
-                                            Reject / Blurry
-                                        </button>
-                                    </div>
-                                </div>
+                            {/* Metadata Badges */}
+                            <div className="flex items-center gap-1.5 shrink-0 text-slate-500">
+                                {file.flag_reason && 
+                                    <span className="bg-amber-50 text-amber-800 border border-amber-200 font-sans px-1.5 py-0.5 rounded text-[11px] font-medium">
+                                        {file.flag_reason || "Unassigned"} ({file.confidence_score}%)
+                                    </span>
+                                }
+                                {file.predicted_owner &&
+                                    <span>|•{file.predicted_owner}</span>
+                                }
+                                {file.predicted_year &&
+                                    <span>|•{file.predicted_year}</span>
+                                }   
                             </div>
+                            </div>
+
+                            {/* Right: Inline Controls */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                            <select
+                                className="bg-slate-50 border border-slate-300 rounded px-2 py-1 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                value={selectedDocTypes[file.id] || file.flag_reason}
+                                onChange={(e) =>
+                                setSelectedDocTypes({ ...selectedDocTypes, [file.id]: e.target.value })
+                                }
+                            >
+                                <option value="W-2">Assign as W-2</option>
+                                <option value="Form 1040">Assign as Form 1040</option>
+                                <option value="1099-INT">Assign as 1099-INT</option>
+                                <option value="1099-MISC">Assign as 1099-MISC</option>
+                                <option value="Government ID">Assign as Government ID</option>
+                            </select>
+
+                            <button
+                                onClick={() => handleConfirmAssign(file.id)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-2.5 py-1 rounded transition-colors"
+                            >
+                                Confirm
+                            </button>
+
+                            <button
+                                onClick={() => handleReject(file.id)}
+                                className="text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 font-medium px-2 py-1 rounded transition-colors"
+                                title="Reject or mark as blurry"
+                            >
+                                Reject
+                            </button>
+                            </div>
+                        </div>
                         ))}
                     </section>
                 )}
 
                 {/* REQUIRED DOCUMENTS */}
                 <section className="bg-white border border-slate-300 rounded-md overflow-hidden shadow-xs">
-                    <div className="p-3 bg-slate-100 border-b border-slate-300 flex items-center justify-between">
-                        <span className="font-bold text-slate-800 uppercase tracking-wider">REQUIRED DOCUMENTS</span>
-                        <button
-                            onClick={handleAddManualRequirement}
-                            className="bg-white border border-slate-300 hover:bg-slate-50 text-indigo-700 font-bold px-2.5 py-1 rounded shadow-2xs"
-                        >
-                            + Add Manual Requirement
-                        </button>
-                    </div>
+                    {/* REQUIRED DOCUMENTS HEADER */}
+                        <div className="bg-slate-100 border-b border-slate-300 px-3 py-2 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-800 text-xs tracking-wide uppercase">
+                                Required Documents
+                                </span>
+                                <span className="bg-slate-200 text-slate-600 text-[10px] font-mono px-1.5 py-0.5 rounded">
+                                Auto-Derived
+                                </span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                {/* + ADD MANUAL REQUIREMENT */}
+                                <button
+                                onClick={handleAddManualRequirement}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-2.5 py-1 rounded text-xs transition-colors shadow-2xs cursor-pointer"
+                                >
+                                + Add Requirement
+                                </button>
+                                {/* 🔄 MANUAL REDERIVE BUTTON */}
+                                <button
+                                    onClick={handleRederiveRequirements}
+                                    disabled={isRederiving}
+                                    className="text-slate-500 hover:text-slate-800 font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Re-run derivation engine to refresh required document rules"
+                                    >
+                                    <svg
+                                        className={`w-4 h-4 stroke-current ${isRederiving ? "animate-spin" : ""}`}
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        strokeWidth="2"
+                                    >
+                                        <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                        />
+                                    </svg>
+                                </button>
+                            </div>                            
+                        </div>
 
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">

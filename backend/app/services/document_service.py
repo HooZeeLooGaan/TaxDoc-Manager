@@ -20,8 +20,8 @@ class DocumentService:
         self.client_service = client_service
 
     # Service function to get all the documents of a client
-    async def get_client_documents(self, client_id: UUID) -> list[DocumentResponse]:
-        response = await self.document_repository.get_documents_by_client_id(client_id)
+    async def get_client_documents(self, client_id: UUID, getReviewDocsOnly: bool) -> list[DocumentResponse]:
+        response = await self.document_repository.get_documents_by_client_id(client_id, getReviewDocsOnly)
         return [DocumentResponse.from_db(doc) for doc in response]
 
     # Get document metadata from the document store
