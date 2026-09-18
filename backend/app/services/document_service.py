@@ -1,12 +1,12 @@
 from uuid import UUID
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import UploadFile, HTTPException, status
 
 from app.clients.google_drive_client import GoogleDriveClient
 from app.clients.tesseract_ocr_client import TesseractOCRClient
 from app.repositories.document_repository import DocumentRepository
 from app.models.entities import ingested_documents as TaxDocument, DocumentStatus
-from app.schemas.documents import DocumentResponse
+from app.schemas.documents import DocumentResponse, DocumentBase
 from app.services.client_service import ClientService
 from app.schemas.clients import ClientResponse
 
@@ -30,6 +30,11 @@ class DocumentService:
         return DocumentResponse.from_db(document)
 
     # Get file content of document
+    async def get_document_metadata(self, drive_file_id: str) -> DocumentBase:
+        file_detail = await self.google_drive_client.get_file_metadata(drive_file_id)
+        return DocumentBase.from_client(file_detail)
+
+    # Get file content of document
     async def get_document_bytes(self, document_id: UUID) -> bytes:
         document = await self.get_document_by_id(document_id)
         file_bytes = await self.google_drive_client.get_file_content(document.file_id)
@@ -46,24 +51,23 @@ class DocumentService:
         client = await self._get_client(client_id)
         folder_name = f"{client.primary_name}_{client.id}"
         folder_id = await self.google_drive_client.get_or_create_folder(folder_name)
-
         file_bytes = await file.read()
         filename = file.filename or "UntitledDoc"
         mime_type = file.content_type or "application/octet-stream"
+
         drive_file = await self.google_drive_client.upload_file(file_bytes=file_bytes, filename=filename, folder_id=folder_id, mime_type=mime_type)
-        file_path = f"GoogleDrive:/TaxDoc-Manager/{client_id}/{file.filename}"
+        file_id = drive_file["id"]
+        await self.google_drive_client.update_permission(file_id)
 
         document = TaxDocument(
             client_id=client_id,
             assigned_requirement_id=requirement_id,
-            google_drive_file_id=drive_file["id"],
+            google_drive_file_id=file_id,
             file_name=filename,
             file_size_bytes=file.size,
-            file_path=file_path,
             mime_type=file.content_type,
             status=DocumentStatus.PENDING_CLASSIFICATION,
             needs_attention=False
-            # web_view_link=drive_file.get("web_view_link")
         )
         documentRecord = await self.document_repository.create_document(document)
         return DocumentResponse.from_db(documentRecord)

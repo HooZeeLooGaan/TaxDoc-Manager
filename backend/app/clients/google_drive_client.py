@@ -18,7 +18,7 @@ class GoogleDriveClient():
     # Get file's metadata
     async def get_file_metadata(self, file_id:str) -> Dict[str, Any]:    
         url=f"{self.base_url}/drive/v3/files/{file_id}"
-        params={"fields": "id, name, mimeType, size, createdTime, md5Checksum"}
+        params={"fields": "id, name, mimeType, size, createdTime, md5Checksum, webViewLink"}
         response = await self._send_http_request('GET', url, params=params)
         return response.json()
 
@@ -98,6 +98,14 @@ class GoogleDriveClient():
             # Hard delete: purge completely
             await self._send_http_request("DELETE", url)
 
+    async def update_permission(self, file_id):
+        url = f"{self.base_url}/drive/v3/files/{file_id}/permissions"
+        payload = {
+            "role": "reader",
+            "type": "anyone"
+        }
+        response = await self._send_http_request("POST", url, json=payload)
+        return response
 
     # Private methods
     # Get google drive access token when expired using its refresh token and client credentials

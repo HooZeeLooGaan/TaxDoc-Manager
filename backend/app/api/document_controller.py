@@ -4,24 +4,24 @@ from typing import Optional
 
 from app.services.document_service import DocumentService
 from app.dependencies import get_document_service
-from app.schemas.documents import DocumentResponse
+from app.schemas.documents import DocumentResponse, DocumentBase
 
 document_router = APIRouter(prefix="/documents", tags=["Documents"])
 
 # Get document metadata using document ID
-@document_router.get("/{document_id}", status_code=status.HTTP_200_OK, response_model=DocumentResponse, summary="Get Document Metadata & Processing Status")
-async def get_document_by_id(document_id: UUID, service: DocumentService = Depends(get_document_service)):
-    """
-        ### Fetch Ingested Document Metadata 📄
-        Retrieves metadata, OCR extraction outputs, AI classification results, and review flags for a specific document.
+# @document_router.get("/{document_id}", status_code=status.HTTP_200_OK, response_model=DocumentResponse, summary="Get Document Metadata & Processing Status")
+# async def get_document_by_id(document_id: UUID, service: DocumentService = Depends(get_document_service)):
+#     """
+#         ### Fetch Ingested Document Metadata 📄
+#         Retrieves metadata, OCR extraction outputs, AI classification results, and review flags for a specific document.
 
-        #### 💡 Key Details:
-        * **OCR Raw Output**: View extracted text parsed via PyMuPDF or Tesseract OCR.
-        * **AI Metadata**: Access confidence scores, predicted document type, tax year, and extracted JSON payload.
-        * **Requirement Linkage**: Check `assigned_requirement_id` to verify if this document has fulfilled a client requirement.
-        * **Review Flags**: Inspect `flag_reason` if the document status is set to `NEEDS_REVIEW`.
-    """
-    return await service.get_document_by_id(document_id)
+#         #### 💡 Key Details:
+#         * **OCR Raw Output**: View extracted text parsed via PyMuPDF or Tesseract OCR.
+#         * **AI Metadata**: Access confidence scores, predicted document type, tax year, and extracted JSON payload.
+#         * **Requirement Linkage**: Check `assigned_requirement_id` to verify if this document has fulfilled a client requirement.
+#         * **Review Flags**: Inspect `flag_reason` if the document status is set to `NEEDS_REVIEW`.
+#     """
+#     return await service.get_document_by_id(document_id)
 
 # fetch and download document content using document ID
 @document_router.get("/{document_id}/download", status_code=status.HTTP_200_OK, summary="Retrieve document byte content")
@@ -40,6 +40,16 @@ async def get_document_bytes(document_id: UUID, service: DocumentService = Depen
         content=file_bytes,
         media_type="application/pdf",
     )
+
+# fetch all document metadata from file store using document ID
+@document_router.get("/{document_id}", status_code=status.HTTP_200_OK, response_model= DocumentBase, summary="Get document metadata from file-store")
+async def get_document_url(document_id: str, service: DocumentService = Depends(get_document_service)) -> DocumentBase:
+    """
+        ### Fetch Document metadata 📥
+        Returns all the file metadata of the file stored in filestore.
+    """
+    file = await service.get_document_metadata(document_id)
+    return file
 
 # Delete document matching document ID
 @document_router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a document")

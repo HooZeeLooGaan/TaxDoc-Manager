@@ -9,7 +9,17 @@ class DocumentBase(BaseModel):
     file_id: str = Field(description="Google Drive File ID")
     mime_type: Optional[str] = None
     file_size: Optional[int] = Field(default=None, description="Size in bytes")
-    requirement_id: Optional[UUID] = None
+    file_path: Optional[str]
+
+    @classmethod
+    def from_client(cls, dict: Dict[str, Any]) -> "DocumentBase":
+        return cls(
+            file_name = dict["name"],
+            file_id = dict["id"],
+            mime_type = dict["mimeType"],
+            file_size = dict["size"],
+            file_path = dict["webViewLink"]
+        )
 
 class DocumentInsights(BaseModel):
     confidence_score: Optional[float]
@@ -17,14 +27,14 @@ class DocumentInsights(BaseModel):
     predicted_year: Optional[int]
     predicted_owner: Optional[str]
     flag_reason: Optional[FlagReason]
-    status: DocumentStatus
+    status: DocumentStatus    
 
 class DocumentResponse(DocumentBase, DocumentInsights):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     client_id: UUID
-    file_path: Optional[str]
+    requirement_id: Optional[UUID] = None
 
     @classmethod
     def from_db(cls, model: TaxDocument) -> "DocumentResponse":
